@@ -1,0 +1,1098 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#06070a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Chain of Approvals</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Creepster&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#06070a; --panel:rgba(16,18,24,.84); --line:rgba(255,255,255,.09);
+    --ink:#e8ecf2; --muted:#8e97a6; --green:#3fb950; --red:#f85149; --amber:#e3a13b; --blue:#2f8fe8;
+  }
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);overflow:hidden;
+    font-family:Inter,"Segoe UI",system-ui,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+  #c{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:default}
+  #vignette{position:fixed;inset:0;pointer-events:none;z-index:1;
+    background:radial-gradient(ellipse 70% 60% at 50% 48%,transparent 55%,rgba(0,0,0,.75) 100%)}
+  .hud{position:fixed;left:0;right:0;z-index:3;display:flex;flex-direction:column;align-items:center;gap:6px;
+    padding:10px 16px;pointer-events:none}
+  .hud.top{top:0}
+  .hud.bottom{bottom:0;flex-direction:row;justify-content:center;gap:10px;padding-bottom:max(12px,env(safe-area-inset-bottom))}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center}
+  .pill{pointer-events:auto;background:var(--panel);border:1px solid var(--line);border-radius:999px;
+    padding:7px 14px;font-size:14px;font-weight:600;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);white-space:nowrap}
+  .pill b{color:#fff}
+  .pill .lv{color:var(--muted);font-weight:600}
+  .hint{font-size:12.5px;color:var(--muted);text-align:center;max-width:520px;line-height:1.35;
+    text-shadow:0 1px 3px #000}
+  button{pointer-events:auto;font:inherit;font-weight:700;font-size:15px;color:var(--ink);cursor:pointer;
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 20px;
+    backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);transition:background .15s,transform .1s}
+  button:hover{background:rgba(40,44,54,.92)}
+  button:active{transform:translateY(1px)}
+  button.primary{background:#1f6f3a;border-color:#2c8a4b}
+  button.primary:hover{background:#26834a}
+  #toast{position:fixed;left:50%;bottom:86px;transform:translateX(-50%) translateY(10px);z-index:4;
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 14px;font-size:13.5px;
+    opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;white-space:nowrap}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .overlay{position:fixed;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;
+    background:rgba(4,5,8,.55);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
+    opacity:0;visibility:hidden;pointer-events:none;transition:opacity .3s,visibility 0s .3s}
+  .overlay.show{opacity:1;visibility:visible;pointer-events:auto;transition:opacity .3s}
+  .card{background:#1d1f24;border:1px solid var(--line);border-radius:16px;padding:26px 28px 22px;
+    width:min(340px,calc(100vw - 32px));box-sizing:border-box;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+  .stamp{display:inline-block;font-family:Creepster,Inter,sans-serif;font-size:46px;letter-spacing:2px;color:var(--green);
+    border:4px solid var(--green);border-radius:10px;padding:2px 16px 0;transform:rotate(-6deg);margin:4px 0 14px;
+    text-shadow:0 0 18px rgba(63,185,80,.45)}
+  .overlay.show .stamp{animation:stamp .45s cubic-bezier(.2,1.6,.4,1) both}
+  @keyframes stamp{from{transform:rotate(-6deg) scale(2.2);opacity:0}to{transform:rotate(-6deg) scale(1);opacity:1}}
+  .card h2{margin:0 0 6px;font-size:21px}
+  .card p{margin:0 0 18px;color:var(--muted);font-size:14px}
+  .spinner{width:34px;height:34px;border-radius:50%;border:3px solid rgba(255,255,255,.12);border-top-color:var(--green);
+    animation:spin 0.9s linear infinite;margin:0 auto 14px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .hint b{color:var(--ink);font-weight:700;margin-right:2px}
+  .hint .tip{display:block;margin-top:3px;opacity:.8}
+  .mail{width:min(420px,calc(100vw - 24px));background:#e6e6e6;border-radius:10px;overflow:hidden;color:#1b1b1b;
+    box-shadow:0 20px 60px rgba(0,0,0,.6);text-align:left}
+  .mbar{background:#0f62b5;color:#fff;display:flex;align-items:center;gap:10px;padding:10px 6px 10px 14px;font-size:15px;font-weight:600}
+  .mbar span{flex:1;min-width:0}
+  .mbar button{background:none;border:0;color:#fff;font-size:18px;padding:6px 10px;backdrop-filter:none}
+  .mbody{background:#fff;margin:10px;border-radius:12px;padding:16px}
+  .mhead{display:flex;gap:12px;align-items:center;margin-bottom:14px}
+  .mav{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;font-weight:600;font-size:15px;color:#5b4a2a;flex:none}
+  .mfrom{color:#0f62b5;font-weight:700;font-size:17px}
+  .mtime{color:#555;font-size:13px;margin-top:2px}
+  .mtime .hi{color:#a4262c;font-weight:600}
+  .mtext{white-space:pre-line;font-size:16px;line-height:1.45;margin-bottom:16px}
+  .mtag{display:inline-block;color:#fff;font-weight:600;font-size:15px;padding:8px 16px}
+  @media (max-width:420px){ .pill{font-size:13px;padding:6px 12px} .pill.title{display:none} button{padding:10px 18px;font-size:15px}
+    .hint{font-size:11.5px} .hud{padding:8px 12px;gap:5px} .hud.top{padding-top:max(8px,env(safe-area-inset-top))} }
+</style>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+"three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="vignette"></div>
+
+<div class="hud top" id="hudTop">
+  <div class="row">
+    <div class="pill title"><span class="lv">Chain of approvals</span></div>
+    <div class="pill">Moves <b id="moves">0</b></div>
+    <div class="pill">Fewest <b id="par">–</b></div>
+  </div>
+  <div class="hint"><b>1</b> Move every hand to an <span style="color:var(--green)">Approved</span> email. <b>2</b> No chains can cross.
+    <b>3</b> Only move a hand if no chain is on top. <b>4</b> One hand per email. <span class="tip">Tap an email to read it.</span></div>
+</div>
+
+<div class="hud bottom" id="hudBottom">
+  <button id="btnReset">Reset</button>
+</div>
+
+<div id="toast"></div>
+
+<div class="overlay" id="loading">
+  <div class="card"><div class="spinner"></div><h2>Hanging the chains…</h2><p style="margin:0">Tangling the approval chain.</p></div>
+</div>
+
+<div class="overlay" id="mail">
+  <div class="mail" role="dialog" aria-label="Email">
+    <div class="mbar"><span id="mSubj"></span><button id="mClose" aria-label="Close">✕</button></div>
+    <div class="mbody">
+      <div class="mhead"><div class="mav" id="mAv"></div><div><div class="mfrom" id="mFrom"></div><div class="mtime" id="mTime"></div></div></div>
+      <div class="mtext" id="mText"></div>
+      <div class="mtag" id="mTag"></div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="win">
+  <div class="card">
+    <div class="stamp">Approved</div>
+    <h2 id="winText">Approved in 0 moves.</h2>
+    <p id="winSub">The chain of command is untangled.</p>
+    <div class="row">
+      <button class="primary" id="winReset">Play again →</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+
+// ============================================================ board
+const DOOR_W = 7.6, DOOR_D = 11, DOOR_CZ = -1.1;
+const DOOR_Z0 = DOOR_CZ - DOOR_D / 2, DOOR_Z1 = DOOR_CZ + DOOR_D / 2;
+const CARD_W = 1.85, CARD_H = 1.2;
+
+// laid out like the office door: 6 Approved, 4 still stuck
+const CARDS = [
+  { id: 'A1', full: 'I have CHILLS! I love it, no notes. So proud of this team, thank you for the late Friday night. G2G!', x: -1.4, z: -4.0, ok: true, subj: 'Re: [FOR SR APPROVAL] Budget Shareables', from: 'Senior Staff', av: 'SR', avc: '#e4b7e5',
+    body: 'I have CHILLS! I love it, no notes. G2G!', time: 'Sat 12:13 AM' },
+  { id: 'A2', full: 'Hey folks,\n\nSmall flag for Canadiennes et Canadiens. Otherwise, G2G.\n\nThank you,', x: 2.15, z: -3.35, ok: true, subj: '[FOR SR APPROVAL] Budget 2026 Mailer', from: 'Senior Staff', av: 'SR', avc: '#ecd9a0',
+    body: 'Small flag for Canadiennes et Canadiens. Otherwise, G2G.', time: 'Fri 4:59' },
+  { id: 'A3', full: 'Happy with it - very well done.', x: 0.05, z: -2.0, ok: true, subj: 'Re: [FOR SR APPROVAL] Budget Shareables', from: 'Senior Staff', av: 'SR', avc: '#f6cfa8',
+    body: 'Happy with it - very well done.', time: 'Fri 3:33' },
+  { id: 'P1', full: 'Hi just quickly bumping for FR approval. Thanks!\n\n— Fri 3:33 —\nHello! Just bumping for approval.\n\n— Fri 5:01 —\nBumping one more time!', x: -2.15, z: -1.65, tag: 'await', subj: 'Budget 2026 Mailer Translation', from: 'Translation', av: 'TR', avc: '#f5a3c0',
+    body: 'Bumping one more time!', time: 'Fri 5:01' },
+  { id: 'P2', full: 'For your awareness, we may go a new direction. No action required.\n\nPlease do not reply all.', x: 2.05, z: -0.65, tag: 'await', subj: 'Re: [FOR MinO APPROVAL] Budget 2026 Video', from: 'Finance', av: 'FIN', avc: '#ecd9a0',
+    body: 'We may go a new direction. No action required.', time: 'Sat 11:11', high: true },
+  { id: 'P3', full: 'Hello,\n\nSo sorry for the last minute change but could we see the animation with this new script and updated figures? By EoD would be great.', x: -0.2, z: 0.3, tag: 'content', subj: 'Re: Budget 2026 Video', from: 'Finance', av: 'FIN', avc: '#ecd9a0',
+    body: 'So sorry for the last minute change…', time: 'Fri 4:59' },
+  { id: 'P4', full: 'Hi team,\n\nPlease hold.. There\u2019s been some last minute changes. Waiting on updated numbers from FIN.', x: -2.15, z: 0.55, tag: 'hold', subj: 'Re: [FOR APPROVAL] Budget 2026 InfoLib', from: 'PMO', av: 'PMO', avc: '#ecd9a0',
+    body: 'Please hold.. Waiting on updated numbers.', time: 'Fri 4:59' },
+  { id: 'A4', full: 'Hi all,\n\nGood to go on all, thank you!\n\nThanks all! Great work on getting this through.\n\nBest,', x: 2.15, z: 1.45, ok: true, subj: 'Re: [FOR SR APPROVAL] Budget Shareables', from: 'Senior Staff', av: 'SR', avc: '#cfd3d8',
+    body: 'Good to go on all, thank you!', time: 'Fri 11:11' },
+  { id: 'A5', full: 'Good with me.', x: 0, z: 2.05, ok: true, subj: 'Re: [FOR APPROVAL] Budget 2026 InfoLib', from: 'PMO', av: 'PMO', avc: '#ecd9a0',
+    body: 'Good with me.', time: 'Fri 4:59' },
+  { id: 'A6', full: 'Good on our end. Thanks for the quick turnaround!', x: -1.95, z: 3.0, ok: true, subj: 'Re: [FOR MinO APPROVAL] Budget 2026 Video', from: 'Finance', av: 'FIN', avc: '#ecd9a0',
+    body: 'Good on our end. Thanks for the quick turnaround!', time: 'Sat 11:11' },
+];
+const TAGS = { ok: ['Approved', '#5cc67e', '#fff'], await: ['Awaiting Approval', '#cc3f4d', '#fff'],
+  hold: ['Hold', '#9e9e9e', '#fff'], content: ['Waiting for content', '#333', '#fff'] };
+const CARD_IDX = Object.fromEntries(CARDS.map((c, i) => [c.id, i]));
+// ends sit on the right of an email so its status stays readable
+CARDS.forEach(c => { c.ax = c.x + 0.5; c.az = c.z + 0.05; });
+
+// The door's starting tangle (the office door): blue under red, green over both.
+// It is built from a solved door by TANGLE, so playing those moves backwards is a 3-move solution.
+// door: where the hands start; slack: chain length / straight distance between those hands.
+const START = [
+  { solved: ['A2', 'A4'], door: ['A2', 'P1'], slack: 1.27 },   // blue: SR "FR" to Bumping
+  { solved: ['A1', 'A6'], door: ['A1', 'P2'], slack: 1.31 },   // red: SR "CHILLS" to MinO new direction
+  { solved: ['A3', 'A5'], door: ['A3', 'A4'], slack: 1.55 },   // green: SR "Happy with it" to SR "Good to go"
+];
+const TANGLE = [
+  { from: 'A4', to: 'P1', via: [[1.6, -0.9], [-0.4, -1.0]] },   // blue dips under "Happy with it"
+  { from: 'A6', to: 'P2', via: [[-0.2, 0.5], [1.2, 0.3]] },     // red dips under "Happy with it", over blue
+  { from: 'A5', to: 'A4', via: [[1.6, 2.8]] },                  // green hangs below "Good to go", over both
+];
+const PAR = TANGLE.length;
+const CHAIN_TINTS = [0xb9c2cf, 0x8c929b, 0xc2b3a2, 0x9fb0ba];
+
+// ============================================================ physics constants
+const R = 0.07;          // chain radius
+const POST_R = 0.25;     // a placed hand / padlock acts as a peg of this radius
+const LIFT = 0.45;       // height of a hand while it is carried
+const N = 36;            // particles per chain
+const SUB = 6, ITER = 3; // substeps per 60Hz frame, solver iterations per substep
+const H = 1 / 60 / SUB;
+const DOOR_G = 6;         // the real door is vertical: chains sag toward its bottom
+const GRAV = -30, DAMP = 0.99, FRIC = 0.55, STIFF = 0.8, SLACK = 1.04;
+const DRAG_SPEED = 7, PATH_SPEED = 5, VSPEED = 3;
+const XLIM = DOOR_W / 2 - 0.12, ZMIN = DOOR_Z0 + 0.12, ZMAX = DOOR_Z1 - 0.12;
+
+let chains = [], ends = [];
+
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+function setupStart() {
+  chains = []; ends = [];
+  START.forEach((def, ci) => {
+    const c = { id: ci, P: new Float32Array(N * 3), Q: new Float32Array(N * 3), W: new Float32Array(N).fill(1),
+      ends: [], rest: 0, len: 0, dragged: false, bb: new Float32Array((N - 1) * 6) };
+    c.W[0] = 0; c.W[N - 1] = 0;
+    def.solved.forEach((cid, k) => {
+      const card = CARD_IDX[cid];
+      const e = { chain: c, k, lock: false, card, origin: card, x: CARDS[card].ax, y: R, z: CARDS[card].az,
+        state: 'placed', queue: [], path: [], wpT: 0, ang: 0, shake: 0 };
+      c.ends.push(e); ends.push(e);
+    });
+    const [a, b] = c.ends, d = Math.hypot(a.x - b.x, a.z - b.z);
+    const [p, q] = def.door.map(id => CARDS[CARD_IDX[id]]);
+    c.len = Math.hypot(p.ax - q.ax, p.az - q.az) * def.slack;
+    // start as a loose U hanging down the door
+    const sag = Math.sqrt(Math.max(0, c.len * c.len - d * d)) * 0.4, lift = 0;
+    for (let i = 0; i < N; i++) {
+      const t = i / (N - 1), u = 4 * t * (1 - t);
+      c.P[i * 3] = a.x + (b.x - a.x) * t; c.P[i * 3 + 1] = R + lift * Math.min(1, u * 3);
+      c.P[i * 3 + 2] = a.z + (b.z - a.z) * t + sag * u;
+    }
+    c.Q.set(c.P);
+    c.rest = c.len / (N - 1);
+    chains.push(c);
+  });
+}
+
+function snapshot() {
+  return { chains: chains.map(c => ({ P: c.P.slice(), rest: c.rest })),
+    ends: ends.map(e => ({ card: e.card, x: e.x, y: e.y, z: e.z })) };
+}
+function restore(s) {
+  chains.forEach((c, i) => { c.P.set(s.chains[i].P); c.Q.set(s.chains[i].P); c.rest = s.chains[i].rest; });
+  ends.forEach((e, i) => { Object.assign(e, s.ends[i]); e.origin = e.card; e.state = 'placed'; e.queue = []; e.path = []; });
+}
+
+// ---------- hands
+function clampHand(e) {
+  for (const o of ends) {
+    if (o === e || o.state !== 'placed') continue;
+    const dx = e.x - o.x, dz = e.z - o.z, d = Math.hypot(dx, dz), m = 2 * POST_R;
+    if (d < m) {
+      if (d < 1e-6) { e.x = o.x + m; continue; }
+      e.x = o.x + dx / d * m; e.z = o.z + dz / d * m;
+    }
+  }
+  e.x = Math.max(-XLIM + 0.15, Math.min(XLIM - 0.15, e.x));
+  e.z = Math.max(ZMIN + 0.2, Math.min(ZMAX - 0.15, e.z));
+}
+
+function driveEnd(e) {
+  if (e.lock || e.state === 'placed') return;
+  let tx = e.x, tz = e.z, ty = LIFT, sp = DRAG_SPEED;
+  if (e.state === 'drag') { tx = pointer.x; tz = pointer.z; }
+  else if (e.state === 'path') {
+    const w = e.queue[0];
+    if (!w) e.state = 'drop';
+    else {
+      tx = w[0]; tz = w[1]; sp = PATH_SPEED; e.wpT += H;
+      if (Math.hypot(tx - e.x, tz - e.z) < 0.06 || e.wpT > 1.6) { e.queue.shift(); e.wpT = 0; }
+    }
+  }
+  if (e.state === 'drop') {
+    const c = CARDS[e.card]; tx = c.ax; tz = c.az; sp = PATH_SPEED;
+    if (Math.hypot(tx - e.x, tz - e.z) < 0.02) ty = R;
+  }
+  e.y += Math.max(-VSPEED * H, Math.min(VSPEED * H, ty - e.y));
+  if (e.y > LIFT * 0.6 || e.state === 'drop') {
+    const dx = tx - e.x, dz = tz - e.z, d = Math.hypot(dx, dz);
+    if (d > 1e-6) { const s = Math.min(d, sp * H); e.x += dx / d * s; e.z += dz / d * s; }
+  }
+  clampHand(e);
+  if (e.state === 'drop') {
+    const c = CARDS[e.card];
+    if (Math.abs(e.y - R) < 1e-4 && Math.hypot(c.ax - e.x, c.az - e.z) < 0.03) {
+      e.x = c.ax; e.z = c.az; e.y = R; e.state = 'placed'; e.origin = e.card; e.path = []; quiet = 0;
+    }
+  }
+}
+
+// ---------- solver
+function substep() {
+  for (const e of ends) driveEnd(e);
+  for (const c of chains) {
+    const P = c.P, Q = c.Q, [a, b] = c.ends;
+    const dragged = a.state !== 'placed' || b.state !== 'placed';
+    c.dragged = dragged;
+    const g = dragged ? 0 : GRAV * H * H, gz = dragged ? 0 : DOOR_G * H * H;
+    for (let i = 1; i < N - 1; i++) {
+      const k = i * 3;
+      let vx = (P[k] - Q[k]) * DAMP, vy = (P[k + 1] - Q[k + 1]) * DAMP, vz = (P[k + 2] - Q[k + 2]) * DAMP;
+      if (P[k + 1] <= R + 0.002) { vx *= FRIC; vz *= FRIC; }
+      if (dragged) { vx *= 0.97; vy *= 0.97; vz *= 0.97; }
+      const v2 = vx * vx + vy * vy + vz * vz;
+      if (v2 > 0.0025) { const s = 0.05 / Math.sqrt(v2); vx *= s; vy *= s; vz *= s; }
+      Q[k] = P[k]; Q[k + 1] = P[k + 1]; Q[k + 2] = P[k + 2];
+      P[k] += vx; P[k + 1] += vy + g; P[k + 2] += vz + gz;
+    }
+    pin(c);
+    const dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
+    let cur = 0;
+    for (let i = 0; i < N - 1; i++) { const k = i * 3; cur += Math.hypot(P[k + 3] - P[k], P[k + 4] - P[k + 1], P[k + 5] - P[k + 2]); }
+    // a chain snagged on hands or other chains pays out length instead of stretching until it snaps through
+    const L = Math.max(dragged ? Math.hypot(dx, dy, dz) : Math.max(c.len, Math.hypot(dx, dz) * SLACK + 0.12), cur * 0.94);
+    c.rest += (Math.max(L, 0.6) / (N - 1) - c.rest) * 0.01;
+  }
+  for (let it = 0; it < ITER; it++) {
+    for (const c of chains) distance(c, it & 1);
+    ropeCollisions();
+    postCollisions();
+    for (const c of chains) floorBounds(c);
+  }
+}
+
+function pin(c) {
+  const [a, b] = c.ends, P = c.P, Q = c.Q, k = (N - 1) * 3;
+  P[0] = Q[0] = a.x; P[1] = Q[1] = a.y; P[2] = Q[2] = a.z;
+  P[k] = Q[k] = b.x; P[k + 1] = Q[k + 1] = b.y; P[k + 2] = Q[k + 2] = b.z;
+}
+
+function distance(c, backward) {
+  const P = c.P, W = c.W, rest = c.rest;
+  for (let n = 0; n < N - 1; n++) {
+    const i = backward ? N - 2 - n : n, k = i * 3;
+    const dx = P[k + 3] - P[k], dy = P[k + 4] - P[k + 1], dz = P[k + 5] - P[k + 2];
+    const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const w0 = W[i], w1 = W[i + 1], ws = w0 + w1;
+    if (len < 1e-9 || ws === 0) continue;
+    const f = (len - rest) / (len * ws) * STIFF;
+    P[k] += dx * f * w0; P[k + 1] += dy * f * w0; P[k + 2] += dz * f * w0;
+    P[k + 3] -= dx * f * w1; P[k + 4] -= dy * f * w1; P[k + 5] -= dz * f * w1;
+  }
+}
+
+function computeBB(c) {
+  const P = c.P, B = c.bb, m = R;
+  let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9, y1 = -1e9;
+  for (let i = 0; i < N - 1; i++) {
+    const k = i * 3, j = i * 6;
+    const ax = P[k], ay = P[k + 1], az = P[k + 2], bx = P[k + 3], by = P[k + 4], bz = P[k + 5];
+    B[j] = Math.min(ax, bx) - m; B[j + 1] = Math.max(ax, bx) + m;
+    B[j + 2] = Math.min(ay, by) - m; B[j + 3] = Math.max(ay, by) + m;
+    B[j + 4] = Math.min(az, bz) - m; B[j + 5] = Math.max(az, bz) + m;
+    if (B[j] < x0) x0 = B[j]; if (B[j + 1] > x1) x1 = B[j + 1];
+    if (B[j + 4] < z0) z0 = B[j + 4]; if (B[j + 5] > z1) z1 = B[j + 5];
+  }
+  c.box = [x0, x1, z0, z1];
+}
+
+function ropeCollisions() {
+  const D = 2 * R, D2 = D * D;
+  for (const c of chains) computeBB(c);
+  for (let ci = 0; ci < chains.length; ci++) for (let cj = ci + 1; cj < chains.length; cj++) {
+    const A = chains[ci], B = chains[cj];
+    if (A.box[1] < B.box[0] || B.box[1] < A.box[0] || A.box[3] < B.box[2] || B.box[3] < A.box[2]) continue;
+    const bias = A.dragged === B.dragged ? 0 : (A.dragged ? 0.5 : -0.5);
+    const AP = A.P, BP = B.P, AW = A.W, BW = B.W, AB = A.bb, BB = B.bb;
+    for (let i = 0; i < N - 1; i++) {
+      const ia = i * 6;
+      for (let j = 0; j < N - 1; j++) {
+        const jb = j * 6;
+        if (AB[ia + 1] < BB[jb] || BB[jb + 1] < AB[ia] || AB[ia + 5] < BB[jb + 4] || BB[jb + 5] < AB[ia + 4] ||
+            AB[ia + 3] < BB[jb + 2] || BB[jb + 3] < AB[ia + 2]) continue;
+        const k = i * 3, l = j * 3;
+        const p1x = AP[k], p1y = AP[k + 1], p1z = AP[k + 2];
+        const d1x = AP[k + 3] - p1x, d1y = AP[k + 4] - p1y, d1z = AP[k + 5] - p1z;
+        const p2x = BP[l], p2y = BP[l + 1], p2z = BP[l + 2];
+        const d2x = BP[l + 3] - p2x, d2y = BP[l + 4] - p2y, d2z = BP[l + 5] - p2z;
+        const rx = p1x - p2x, ry = p1y - p2y, rz = p1z - p2z;
+        const a = d1x * d1x + d1y * d1y + d1z * d1z, e = d2x * d2x + d2y * d2y + d2z * d2z;
+        if (a < 1e-10 || e < 1e-10) continue;
+        const f = d2x * rx + d2y * ry + d2z * rz, cc = d1x * rx + d1y * ry + d1z * rz, b = d1x * d2x + d1y * d2y + d1z * d2z;
+        const den = a * e - b * b;
+        let s = den > 1e-12 ? Math.min(1, Math.max(0, (b * f - cc * e) / den)) : 0;
+        let t = (b * s + f) / e;
+        if (t < 0) { t = 0; s = Math.min(1, Math.max(0, -cc / a)); }
+        else if (t > 1) { t = 1; s = Math.min(1, Math.max(0, (b - cc) / a)); }
+        let nx = p1x + d1x * s - p2x - d2x * t, ny = p1y + d1y * s - p2y - d2y * t, nz = p1z + d1z * s - p2z - d2z * t;
+        const dd = nx * nx + ny * ny + nz * nz;
+        if (dd >= D2) continue;
+        let dist = Math.sqrt(dd);
+        if (dist < 1e-7) { nx = 0; ny = 1; nz = 0; } else { nx /= dist; ny /= dist; nz /= dist; }
+        if (bias) { ny += bias; const nl = Math.hypot(nx, ny, nz); nx /= nl; ny /= nl; nz /= nl; }
+        const pen = D - dist;
+        const wa0 = AW[i] * (1 - s), wa1 = AW[i + 1] * s, wb0 = BW[j] * (1 - t), wb1 = BW[j + 1] * t;
+        const ws = wa0 * (1 - s) + wa1 * s + wb0 * (1 - t) + wb1 * t;
+        if (ws < 1e-9) continue;
+        const lam = pen / ws;
+        const ca0 = Math.min(lam * wa0, pen), ca1 = Math.min(lam * wa1, pen), cb0 = Math.min(lam * wb0, pen), cb1 = Math.min(lam * wb1, pen);
+        AP[k] += nx * ca0; AP[k + 1] += ny * ca0; AP[k + 2] += nz * ca0;
+        AP[k + 3] += nx * ca1; AP[k + 4] += ny * ca1; AP[k + 5] += nz * ca1;
+        BP[l] -= nx * cb0; BP[l + 1] -= ny * cb0; BP[l + 2] -= nz * cb0;
+        BP[l + 3] -= nx * cb1; BP[l + 4] -= ny * cb1; BP[l + 5] -= nz * cb1;
+      }
+    }
+  }
+}
+
+// Placed hands and padlocks are pegs: other chains wrap around them, never through.
+function postCollisions() {
+  const M = POST_R + R;
+  for (const e of ends) {
+    if (e.state !== 'placed') continue;
+    for (const c of chains) {
+      if (c === e.chain) continue;
+      const P = c.P, W = c.W;
+      for (let i = 0; i < N - 1; i++) {
+        const k = i * 3;
+        const ax = P[k], az = P[k + 2], dx = P[k + 3] - ax, dz = P[k + 5] - az;
+        const ll = dx * dx + dz * dz;
+        let t = ll > 1e-10 ? ((e.x - ax) * dx + (e.z - az) * dz) / ll : 0;
+        t = Math.min(1, Math.max(0, t));
+        let nx = ax + dx * t - e.x, nz = az + dz * t - e.z;
+        const d2 = nx * nx + nz * nz;
+        if (d2 >= M * M) continue;
+        const d = Math.sqrt(d2);
+        if (d < 1e-7) { nx = 1; nz = 0; } else { nx /= d; nz /= d; }
+        const pen = M - d;
+        const w0 = W[i] * (1 - t), w1 = W[i + 1] * t, ws = w0 * (1 - t) + w1 * t;
+        if (ws < 1e-9) continue;
+        const lam = pen / ws, c0 = Math.min(lam * w0, pen * 1.2), c1 = Math.min(lam * w1, pen * 1.2);
+        P[k] += nx * c0; P[k + 2] += nz * c0; P[k + 3] += nx * c1; P[k + 5] += nz * c1;
+      }
+    }
+  }
+}
+
+function floorBounds(c) {
+  const P = c.P;
+  for (let i = 1; i < N - 1; i++) {
+    const k = i * 3;
+    if (P[k + 1] < R) P[k + 1] = R;
+    if (P[k] < -XLIM) P[k] = -XLIM; else if (P[k] > XLIM) P[k] = XLIM;
+    if (P[k + 2] < ZMIN) P[k + 2] = ZMIN; else if (P[k + 2] > ZMAX) P[k + 2] = ZMAX;
+  }
+}
+
+function frame() { for (let s = 0; s < SUB; s++) substep(); }
+
+// ---------- win check
+function seg2D(ax, az, bx, bz, cx, cz, dx, dz) {
+  const d1x = bx - ax, d1z = bz - az, d2x = dx - cx, d2z = dz - cz, rx = ax - cx, rz = az - cz;
+  const a = d1x * d1x + d1z * d1z, e = d2x * d2x + d2z * d2z, f = d2x * rx + d2z * rz;
+  const c = d1x * rx + d1z * rz, b = d1x * d2x + d1z * d2z, den = a * e - b * b;
+  let s = den > 1e-12 ? Math.min(1, Math.max(0, (b * f - c * e) / den)) : 0;
+  let t = e > 1e-12 ? (b * s + f) / e : 0;
+  if (t < 0) { t = 0; s = a > 1e-12 ? Math.min(1, Math.max(0, -c / a)) : 0; }
+  else if (t > 1) { t = 1; s = a > 1e-12 ? Math.min(1, Math.max(0, (b - c) / a)) : 0; }
+  return Math.hypot(ax + d1x * s - cx - d2x * t, az + d1z * s - cz - d2z * t);
+}
+
+// Door rule: a hand can only move if no chain lies on top of its wrist (the chain near the hand).
+function covered(e) {
+  const c = e.chain, P = c.P, step = e.k === 0 ? 1 : -1, i0 = e.k === 0 ? 0 : N - 1;
+  let len = 0;
+  for (let s = 0; s < N - 1 && len < 0.75; s++) {
+    const i = i0 + s * step, j = i + step, k = i * 3, l = j * 3;
+    len += Math.hypot(P[l] - P[k], P[l + 2] - P[k + 2]);
+    const y = (P[k + 1] + P[l + 1]) / 2;
+    for (const o of chains) {
+      const Q = o.P;
+      for (let m = 0; m < N - 1; m++) {
+        if (o === c && Math.abs(m - Math.min(i, j)) < 8) continue;
+        const n = m * 3;
+        if ((Q[n + 1] + Q[n + 4]) / 2 < y + R * 0.8) continue;
+        if (seg2D(P[k], P[k + 2], P[l], P[l + 2], Q[n], Q[n + 2], Q[n + 3], Q[n + 5]) < 2 * R * 1.1) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function isSolved() {
+  for (const e of ends) {
+    if (e.state !== 'placed') return false;
+    if (!e.lock && !CARDS[e.card].ok) return false;
+  }
+  const gap = 2 * R * 0.8;
+  for (let ci = 0; ci < chains.length; ci++) for (let cj = ci + 1; cj < chains.length; cj++) {
+    const A = chains[ci].P, B = chains[cj].P;
+    for (let i = 0; i < N - 1; i++) for (let j = 0; j < N - 1; j++) {
+      const k = i * 3, l = j * 3;
+      if (seg2D(A[k], A[k + 2], A[k + 3], A[k + 5], B[l], B[l + 2], B[l + 3], B[l + 5]) < gap) return false;
+    }
+  }
+  for (const e of ends) for (const c of chains) {
+    if (c === e.chain) continue;
+    const P = c.P;
+    for (let i = 0; i < N - 1; i++) {
+      const k = i * 3;
+      if (seg2D(P[k], P[k + 2], P[k + 3], P[k + 5], e.x, e.z, e.x, e.z) < POST_R + R * 1.5) return false;
+    }
+  }
+  return true;
+}
+
+// ---------- scripted moves (tests)
+// falls back to a timer so shuffling still finishes in a background tab
+const nextFrame = () => new Promise(r => { const t = setTimeout(r, 50); requestAnimationFrame(() => { clearTimeout(t); r(); }); });
+let fastSim = false; // test hook: run scripted moves without yielding to the browser
+
+async function runScripted(e, waypoints, target) {
+  e.card = target; e.queue = waypoints.slice(); e.state = 'path'; e.wpT = 0;
+  let f = 0;
+  while (e.state !== 'placed' && f < 1500) { frame(); if (++f % 25 === 0 && !fastSim) await nextFrame(); }
+  for (let i = 0; i < 70; i++) { frame(); if (i % 25 === 0 && !fastSim) await nextFrame(); }
+}
+async function settle(n) { for (let i = 0; i < n; i++) { frame(); if (i % 100 === 0 && !fastSim) await nextFrame(); } }
+const handOn = id => ends.find(e => e.card === CARD_IDX[id]);
+async function tangleMove(m) { const t = CARDS[CARD_IDX[m.to]]; await runScripted(handOn(m.from), [...m.via, [t.ax, t.az]], CARD_IDX[m.to]); }
+async function makeStart() {
+  setupStart();
+  await settle(500);
+  for (const m of TANGLE) { await tangleMove(m); await settle(150); }
+  await settle(600);
+  return snapshot();
+}
+// the solution: undo the tangle, last move first, along the same paths
+const SOLUTION = TANGLE.slice().reverse().map(m => ({ from: m.to, to: m.from, via: m.via.slice().reverse() }));
+
+
+// ============================================================ rendering
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+const maxAniso = renderer.capabilities.getMaxAnisotropy();
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x06070a);
+const camera = new THREE.PerspectiveCamera(26, 1, 1, 120);
+camera.up.set(0, 0, -1);
+
+const pmrem = new THREE.PMREMGenerator(renderer);
+const envTex = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
+
+// lights: dim office, one buzzing fluorescent, a jack-o'-lantern glow from below
+scene.add(new THREE.HemisphereLight(0x8fa3c8, 0x0b0a08, 0.55));
+const tube = new THREE.SpotLight(0xe2ecff, 2.3, 0, 0.62, 0.75, 0);
+tube.position.set(0.8, 15, -2.2);
+tube.target.position.set(0, 0, -0.4);
+tube.castShadow = true;
+tube.shadow.mapSize.set(2048, 2048);
+tube.shadow.bias = -0.0004;
+tube.shadow.normalBias = 0.015;
+tube.shadow.camera.near = 8; tube.shadow.camera.far = 22;
+scene.add(tube, tube.target);
+const pumpkin = new THREE.PointLight(0xff7a1a, 0.9, 9, 0);
+pumpkin.position.set(-3.6, 1.4, 5.8);
+scene.add(pumpkin);
+
+function roundRect(g, x, y, w, h, r) {
+  g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+}
+function canvasTex(cv) {
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = maxAniso; return t;
+}
+
+function makeDoorTexture() {
+  const W = 1024, Hh = Math.round(W * DOOR_D / DOOR_W);
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = Hh;
+  const g = cv.getContext('2d');
+  const X = x => (x + DOOR_W / 2) / DOOR_W * W, Z = z => (z - DOOR_Z0) / DOOR_D * Hh, S = W / DOOR_W;
+  const grad = g.createLinearGradient(0, 0, W, Hh);
+  grad.addColorStop(0, '#2c2018'); grad.addColorStop(0.5, '#231a13'); grad.addColorStop(1, '#19120d');
+  g.fillStyle = grad; g.fillRect(0, 0, W, Hh);
+  const rnd = mulberry32(7);
+  for (let i = 0; i < 280; i++) {
+    let x = rnd() * W;
+    g.strokeStyle = rnd() < 0.55 ? `rgba(0,0,0,${0.06 + rnd() * 0.1})` : `rgba(140,98,62,${0.04 + rnd() * 0.07})`;
+    g.lineWidth = 0.6 + rnd() * 2.4; g.beginPath(); g.moveTo(x, 0);
+    for (let y = 0; y <= Hh; y += 36) { x += (rnd() - 0.5) * 5; g.lineTo(x, y); }
+    g.stroke();
+  }
+  // recessed panel behind the emails
+  const px0 = X(-3.35), px1 = X(3.35), pz0 = Z(-4.85), pz1 = Z(3.95);
+  g.strokeStyle = 'rgba(0,0,0,.55)'; g.lineWidth = 10; g.strokeRect(px0, pz0, px1 - px0, pz1 - pz0);
+  g.strokeStyle = 'rgba(160,120,80,.12)'; g.lineWidth = 3; g.strokeRect(px0 + 7, pz0 + 7, px1 - px0 - 14, pz1 - pz0 - 14);
+  // header
+  const title = 'Chain of approvals.';
+  let fs = 128; g.font = `${fs}px Creepster, Impact, sans-serif`;
+  while (g.measureText(title).width > W * 0.86 && fs > 40) { fs -= 4; g.font = `${fs}px Creepster, Impact, sans-serif`; }
+  g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+  g.shadowColor = 'rgba(120,255,140,.55)'; g.shadowBlur = 26;
+  g.fillStyle = '#d6f5cf'; g.fillText(title, W / 2, Z(-5.38));
+  g.shadowBlur = 0;
+  g.font = `600 ${Math.round(0.2 * S)}px Inter, "Segoe UI", sans-serif`;
+  g.fillStyle = 'rgba(230,200,160,.55)';
+  if ('letterSpacing' in g) g.letterSpacing = '6px';
+  g.fillText('FY 2026–27  ·  TRICK OR TREASURY BOARD', W / 2, Z(-4.98));
+  if ('letterSpacing' in g) g.letterSpacing = '0px';
+  // cobwebs
+  const web = (cx, cy, sx, sy, size) => {
+    g.strokeStyle = 'rgba(235,235,240,.22)'; g.lineWidth = 1.4;
+    const spokes = 7, angs = [];
+    for (let i = 0; i < spokes; i++) angs.push(i / (spokes - 1) * Math.PI / 2);
+    angs.forEach(a => { g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + sx * Math.cos(a) * size, cy + sy * Math.sin(a) * size); g.stroke(); });
+    for (let r = size * 0.18; r < size; r += size * 0.16) {
+      g.beginPath();
+      for (let i = 0; i < spokes - 1; i++) {
+        const a0 = angs[i], a1 = angs[i + 1], am = (a0 + a1) / 2, rr = r * 0.84;
+        const x0 = cx + sx * Math.cos(a0) * r, y0 = cy + sy * Math.sin(a0) * r;
+        const x1 = cx + sx * Math.cos(a1) * r, y1 = cy + sy * Math.sin(a1) * r;
+        if (i === 0) g.moveTo(x0, y0);
+        g.quadraticCurveTo(cx + sx * Math.cos(am) * rr, cy + sy * Math.sin(am) * rr, x1, y1);
+      }
+      g.stroke();
+    }
+  };
+  web(0, 0, 1, 1, 210); web(W, 0, -1, 1, 170); web(W, Hh, -1, -1, 150);
+  // bats
+  const bat = (x, y, s, rot) => {
+    g.save(); g.translate(x, y); g.rotate(rot); g.scale(s, s); g.fillStyle = '#07060a';
+    g.beginPath(); g.moveTo(0, -6);
+    g.quadraticCurveTo(14, -22, 46, -16); g.quadraticCurveTo(38, -8, 40, 2); g.quadraticCurveTo(30, -2, 24, 6);
+    g.quadraticCurveTo(16, 0, 8, 10); g.lineTo(0, 6); g.lineTo(-8, 10); g.quadraticCurveTo(-16, 0, -24, 6);
+    g.quadraticCurveTo(-30, -2, -40, 2); g.quadraticCurveTo(-38, -8, -46, -16); g.quadraticCurveTo(-14, -22, 0, -6);
+    g.fill(); g.beginPath(); g.arc(0, -4, 7, 0, Math.PI * 2); g.fill();
+    g.restore();
+  };
+  bat(X(-3.0), Z(-6.05), 1.1, -0.2); bat(X(3.05), Z(-4.6), 0.8, 0.25); bat(X(2.6), Z(-6.2), 0.6, 0.1);
+  // door knob
+  const kx = X(3.5), kz = Z(-0.5), kr = 0.17 * S;
+  const kg = g.createRadialGradient(kx - kr * 0.3, kz - kr * 0.3, 2, kx, kz, kr);
+  kg.addColorStop(0, '#e8c983'); kg.addColorStop(0.6, '#8b6a2e'); kg.addColorStop(1, '#3a2a10');
+  g.fillStyle = 'rgba(0,0,0,.45)'; g.beginPath(); g.ellipse(kx, kz, 0.14 * S, 0.5 * S, 0, 0, Math.PI * 2); g.fill();
+  g.fillStyle = kg; g.beginPath(); g.arc(kx, kz, kr, 0, Math.PI * 2); g.fill();
+  // little sticky note
+  g.save(); g.translate(X(-2.85), Z(4.05)); g.rotate(-0.06);
+  g.fillStyle = '#d8c46a'; g.fillRect(0, 0, 1.35 * S, 0.24 * S);
+  g.fillStyle = '#3b3216'; g.font = `700 ${Math.round(0.13 * S)}px Inter, sans-serif`; g.textAlign = 'left';
+  g.fillText('BOO-DGET SEASON', 0.09 * S, 0.165 * S);
+  g.restore();
+  return canvasTex(cv);
+}
+
+function fitText(g, text, max, weight, size, min) {
+  let fs = size; g.font = `${weight} ${fs}px Inter, "Segoe UI", sans-serif`;
+  while (g.measureText(text).width > max && fs > min) { fs -= 2; g.font = `${weight} ${fs}px Inter, "Segoe UI", sans-serif`; }
+  if (g.measureText(text).width <= max) return text;
+  let t = text; while (t.length > 1 && g.measureText(t + '…').width > max) t = t.slice(0, -1);
+  return t + '…';
+}
+function wrapLines(g, text, max, lines) {
+  const words = text.split(' '), out = [];
+  let line = '';
+  for (const w of words) {
+    const t = line ? line + ' ' + w : w;
+    if (g.measureText(t).width <= max) { line = t; continue; }
+    out.push(line); line = w;
+    if (out.length === lines) break;
+  }
+  if (out.length < lines && line) out.push(line);
+  if (out.length === lines && out.join(' ').length < text.length) out[lines - 1] = fitText(g, out[lines - 1] + ' …', max, '400', parseInt(g.font), 10);
+  return out;
+}
+// big type so the emails stay readable on a phone; tap an email to read all of it
+function makeCardTexture(card) {
+  const cw = 700, ch = Math.round(cw * CARD_H / CARD_W);
+  const cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#e6e6e6'; g.fillRect(0, 0, cw, ch);
+  // title bar
+  g.fillStyle = '#0f62b5'; g.fillRect(0, 0, cw, 78);
+  g.fillStyle = '#fff'; g.textBaseline = 'middle';
+  g.fillText(fitText(g, card.subj.replace(/^Re: /, ''), cw - 40, 600, 40, 30), 20, 41);
+  // message pane
+  roundRect(g, 12, 92, cw - 24, ch - 104, 18); g.fillStyle = '#fff'; g.fill();
+  g.beginPath(); g.arc(70, 154, 42, 0, Math.PI * 2); g.fillStyle = card.avc; g.fill();
+  g.fillStyle = '#5b4a2a'; g.textAlign = 'center';
+  g.font = `600 ${card.av.length > 2 ? 28 : 34}px Inter, sans-serif`; g.fillText(card.av, 70, 156);
+  g.textAlign = 'left';
+  g.fillStyle = '#0f62b5'; g.font = '700 46px Inter, "Segoe UI", sans-serif'; g.fillText(card.from, 128, 134);
+  g.fillStyle = card.high ? '#a4262c' : '#555'; g.font = '500 32px Inter, sans-serif';
+  g.fillText(card.high ? card.time + '  ! High importance' : card.time, 128, 180);
+  g.fillStyle = '#1b1b1b'; g.font = '400 38px Inter, "Segoe UI", sans-serif';
+  wrapLines(g, card.body, cw - 70, 2).forEach((l, i) => g.fillText(l, 34, 246 + i * 46));
+  // status tag, as on the door
+  const [label, bg, fg] = TAGS[card.ok ? 'ok' : card.tag];
+  g.font = `600 ${label.length > 10 ? 36 : 46}px Inter, "Segoe UI", sans-serif`;
+  const tw = Math.max(260, g.measureText(label).width + 44), th = 80;
+  g.fillStyle = bg; g.fillRect(cw - tw - 12, ch - th - 12, tw, th);
+  g.fillStyle = fg; g.textAlign = 'center'; g.fillText(label, cw - 12 - tw / 2, ch - 12 - th / 2 + 2); g.textAlign = 'left';
+  return canvasTex(cv);
+}
+
+function makeGlowTexture() {
+  const cw = 512, ch = Math.round(cw * (CARD_H + 0.3) / (CARD_W + 0.3));
+  const cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
+  const g = cv.getContext('2d');
+  g.shadowColor = '#fff'; g.shadowBlur = 26; g.strokeStyle = '#fff'; g.lineWidth = 9;
+  roundRect(g, 38, 38, cw - 76, ch - 76, 26); g.stroke(); g.stroke();
+  return canvasTex(cv);
+}
+
+let doorMesh, cardMeshes = [], glowMesh;
+function buildBoard() {
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(DOOR_W + 0.7, 0.3, DOOR_D + 0.7),
+    new THREE.MeshStandardMaterial({ color: 0x15171b, roughness: 0.8, metalness: 0.2 }));
+  frame.position.set(0, -0.2, DOOR_CZ); frame.receiveShadow = true; scene.add(frame);
+  const wall = new THREE.Mesh(new THREE.PlaneGeometry(80, 80).rotateX(-Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: 0x0c0e12, roughness: 1 }));
+  wall.position.y = -0.36; wall.receiveShadow = true; scene.add(wall);
+  const edge = new THREE.Mesh(new THREE.BoxGeometry(DOOR_W, 0.14, DOOR_D),
+    new THREE.MeshStandardMaterial({ color: 0x1d150f, roughness: 0.7 }));
+  edge.position.set(0, -0.072, DOOR_CZ); edge.castShadow = true; edge.receiveShadow = true; scene.add(edge);
+  doorMesh = new THREE.Mesh(new THREE.PlaneGeometry(DOOR_W, DOOR_D).rotateX(-Math.PI / 2),
+    new THREE.MeshStandardMaterial({ map: makeDoorTexture(), roughness: 0.62, metalness: 0.0 }));
+  doorMesh.position.set(0, 0, DOOR_CZ); doorMesh.receiveShadow = true; scene.add(doorMesh);
+  const cardGeo = new THREE.PlaneGeometry(CARD_W, CARD_H).rotateX(-Math.PI / 2);
+  CARDS.forEach(card => {
+    const tex = makeCardTexture(card);
+    const m = new THREE.Mesh(cardGeo, new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0xffffff,
+      emissiveIntensity: 0.08, roughness: 0.55, transparent: true, alphaTest: 0.05 }));
+    m.position.set(card.x, 0.004, card.z); m.receiveShadow = true; scene.add(m); cardMeshes.push(m);
+  });
+  glowMesh = new THREE.Mesh(new THREE.PlaneGeometry(CARD_W + 0.3, CARD_H + 0.3).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ map: makeGlowTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, color: 0x3fb950 }));
+  glowMesh.position.y = 0.008; glowMesh.visible = false; scene.add(glowMesh);
+}
+
+// ---------- chains: instanced links laid along a smoothed curve through the particles
+const LINK_PITCH = 0.118, MAX_LINKS = 220;
+const linkGeo = new THREE.TorusGeometry(0.047, 0.0155, 6, 16).scale(1.45, 1, 1);
+const chainMeshes = CHAIN_TINTS.map(tint => {
+  const m = new THREE.InstancedMesh(linkGeo, new THREE.MeshStandardMaterial({ color: tint, metalness: 0.92, roughness: 0.34,
+    envMap: envTex, envMapIntensity: 0.75 }), MAX_LINKS);
+  m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; m.count = 0;
+  m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  scene.add(m); return m;
+});
+const SUBD = 3, curve = new Float32Array(((N - 1) * SUBD + 1) * 3);
+const M4 = new THREE.Matrix4();
+
+function updateChainMesh(c, mesh) {
+  const P = c.P; let m = 0;
+  for (let i = 0; i < N - 1; i++) {
+    const i0 = Math.max(0, i - 1) * 3, i1 = i * 3, i2 = (i + 1) * 3, i3 = Math.min(N - 1, i + 2) * 3;
+    for (let s = 0; s < SUBD; s++) {
+      const t = s / SUBD, t2 = t * t, t3 = t2 * t;
+      for (let d = 0; d < 3; d++) {
+        const p0 = P[i0 + d], p1 = P[i1 + d], p2 = P[i2 + d], p3 = P[i3 + d];
+        curve[m * 3 + d] = 0.5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3);
+      }
+      m++;
+    }
+  }
+  const lk = (N - 1) * 3; curve[m * 3] = P[lk]; curve[m * 3 + 1] = P[lk + 1]; curve[m * 3 + 2] = P[lk + 2]; m++;
+  let count = 0, carry = LINK_PITCH * 0.5;
+  for (let j = 0; j < m - 1 && count < MAX_LINKS; j++) {
+    const ax = curve[j * 3], ay = curve[j * 3 + 1], az = curve[j * 3 + 2];
+    let tx = curve[j * 3 + 3] - ax, ty = curve[j * 3 + 4] - ay, tz = curve[j * 3 + 5] - az;
+    const len = Math.sqrt(tx * tx + ty * ty + tz * tz);
+    if (len < 1e-6) continue;
+    tx /= len; ty /= len; tz /= len;
+    // frame: n1 = "up" orthogonalised against tangent, n2 = sideways
+    let ux = -tx * ty, uy = 1 - ty * ty, uz = -tz * ty;
+    let ul = Math.hypot(ux, uy, uz);
+    if (ul < 0.1) { ux = 0; uy = 0; uz = 1; ul = 1; }
+    ux /= ul; uy /= ul; uz /= ul;
+    const sx = ty * uz - tz * uy, sy = tz * ux - tx * uz, sz = tx * uy - ty * ux;
+    while (carry <= len && count < MAX_LINKS) {
+      const px = ax + tx * carry, py = ay + ty * carry, pz = az + tz * carry;
+      let yx, yy, yz;
+      if (count & 1) { yx = ux; yy = uy; yz = uz; } else { yx = sx; yy = sy; yz = sz; }
+      const zx = ty * yz - tz * yy, zy = tz * yx - tx * yz, zz = tx * yy - ty * yx;
+      M4.set(tx, yx, zx, px, ty, yy, zy, py, tz, yz, zz, pz, 0, 0, 0, 1);
+      mesh.setMatrixAt(count++, M4);
+      carry += LINK_PITCH;
+    }
+    carry -= len;
+  }
+  mesh.count = count;
+  mesh.instanceMatrix.needsUpdate = true;
+}
+
+// ---------- skeleton hand on a mouse, and the padlock
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+function cyl(parts, a, b, r) {
+  const v = new THREE.Vector3().subVectors(b, a), len = v.length();
+  const g = new THREE.CylinderGeometry(r * 0.85, r, len, 7, 1); g.translate(0, len / 2, 0);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), v.normalize()));
+  g.translate(a.x, a.y, a.z); parts.push(g);
+}
+function ball(parts, p, r) { const g = new THREE.SphereGeometry(r, 9, 7); g.translate(p.x, p.y, p.z); parts.push(g); }
+const MA = 0.17, MB = 0.065, MC = 0.115;
+const surf = (x, z) => MB + MB * Math.sqrt(Math.max(0, 1 - (x / MA) ** 2 - (z / MC) ** 2));
+
+const boneGeo = (() => {
+  const parts = [];
+  const zs = [-0.05, -0.017, 0.017, 0.05], fl = [0.86, 1, 1, 0.92];
+  zs.forEach((z, i) => {
+    const f = fl[i], on = (x, zz, lift = 0.012) => V(x, surf(x, zz) + lift, zz);
+    const m0 = on(-0.085, z * 0.75), m1 = on(0, z), p1 = on(0.065 * f, z * 1.04), p2 = on(0.112 * f, z * 1.04), tip = on(0.145 * f + 0.004, z * 1.04, 0.009);
+    cyl(parts, m0, m1, 0.0105); cyl(parts, m1, p1, 0.0098); cyl(parts, p1, p2, 0.009); cyl(parts, p2, tip, 0.0085);
+    ball(parts, m1, 0.0155); ball(parts, p1, 0.0135); ball(parts, p2, 0.012); ball(parts, tip, 0.0105);
+  });
+  const t0 = V(-0.075, surf(-0.075, -0.06) + 0.012, -0.06), t1 = V(-0.02, 0.108, -0.1), t2 = V(0.035, 0.078, -0.118);
+  cyl(parts, t0, t1, 0.011); cyl(parts, t1, t2, 0.0095); ball(parts, t1, 0.014); ball(parts, t2, 0.011);
+  [[-0.11, -0.035], [-0.11, 0], [-0.11, 0.035], [-0.137, -0.017], [-0.137, 0.017]].forEach(([x, z]) => ball(parts, V(x, 0.142, z), 0.02));
+  [-0.023, 0.023].forEach(z => {
+    cyl(parts, V(-0.15, 0.152, z), V(-0.3, 0.2, z * 1.3), 0.016);
+    ball(parts, V(-0.15, 0.152, z), 0.022); ball(parts, V(-0.3, 0.2, z * 1.3), 0.02);
+  });
+  return mergeGeometries(parts);
+})();
+const mouseGeo = new THREE.SphereGeometry(1, 24, 16).scale(MA, MB, MC).translate(0, MB, 0);
+const wheelGeo = new THREE.CylinderGeometry(0.017, 0.017, 0.012, 14).rotateX(Math.PI / 2).translate(0.105, 0.112, 0);
+const mouseMat = new THREE.MeshStandardMaterial({ color: 0x4a505a, roughness: 0.38, metalness: 0.25, envMap: envTex, envMapIntensity: 0.6 });
+const wheelMat = new THREE.MeshStandardMaterial({ color: 0x55e07a, emissive: 0x2bd15a, emissiveIntensity: 0.9 });
+
+function makeHand() {
+  const g = new THREE.Group();
+  const boneMat = new THREE.MeshStandardMaterial({ color: 0xe9e1cc, roughness: 0.55, emissive: 0x2b3a22, emissiveIntensity: 0.6 });
+  const mouse = new THREE.Mesh(mouseGeo, mouseMat), wheel = new THREE.Mesh(wheelGeo, wheelMat), bones = new THREE.Mesh(boneGeo, boneMat);
+  [mouse, wheel, bones].forEach(m => { m.castShadow = true; g.add(m); });
+  g.userData.boneMat = boneMat;
+  g.scale.setScalar(1.55);
+  return g;
+}
+
+const lockParts = (() => {
+  const brass = [], steel = [], dark = [];
+  steel.push(new THREE.BoxGeometry(0.38, 0.016, 0.3).translate(0, 0.008, 0));
+  [[0.15, 0.115], [0.15, -0.115], [-0.15, 0.115], [-0.15, -0.115]].forEach(([x, z]) => {
+    steel.push(new THREE.CylinderGeometry(0.024, 0.024, 0.014, 12).translate(x, 0.022, z));
+    dark.push(new THREE.BoxGeometry(0.03, 0.004, 0.006).rotateY(0.7).translate(x, 0.03, z));
+  });
+  brass.push(new THREE.BoxGeometry(0.2, 0.1, 0.19).translate(-0.02, 0.066, 0));
+  steel.push(new THREE.TorusGeometry(0.06, 0.018, 8, 20, Math.PI).rotateZ(-Math.PI / 2).rotateX(-Math.PI / 2).translate(0.08, 0.075, 0));
+  dark.push(new THREE.CylinderGeometry(0.018, 0.018, 0.006, 14).translate(-0.05, 0.118, 0));
+  dark.push(new THREE.BoxGeometry(0.03, 0.006, 0.01).translate(-0.032, 0.118, 0));
+  return { brass: mergeGeometries(brass), steel: mergeGeometries(steel), dark: mergeGeometries(dark) };
+})();
+const brassMat = new THREE.MeshStandardMaterial({ color: 0xa8802f, metalness: 0.85, roughness: 0.4, envMap: envTex, envMapIntensity: 0.45 });
+const steelMat = new THREE.MeshStandardMaterial({ color: 0x5c636c, metalness: 0.9, roughness: 0.42, envMap: envTex, envMapIntensity: 0.4 });
+const keyMat = new THREE.MeshStandardMaterial({ color: 0x0a0c0a, emissive: 0x3dff6a, emissiveIntensity: 0.35 });
+function makeLock() {
+  const g = new THREE.Group();
+  [[lockParts.brass, brassMat], [lockParts.steel, steelMat], [lockParts.dark, keyMat]].forEach(([geo, mat]) => {
+    const m = new THREE.Mesh(geo, mat); m.castShadow = true; g.add(m);
+  });
+  g.scale.setScalar(1.4);
+  return g;
+}
+
+let endGroups = [];
+function buildEndVisuals() {
+  endGroups.forEach(g => scene.remove(g));
+  endGroups = ends.map(e => { const g = e.lock ? makeLock() : makeHand(); scene.add(g); return g; });
+  ends.forEach(e => { e.ang = targetAngle(e); });
+}
+function targetAngle(e) {
+  const P = e.chain.P, j = (e.k === 0 ? 3 : N - 4) * 3;
+  return Math.atan2(-(P[j + 2] - e.z), P[j] - e.x);
+}
+
+// ============================================================ game state + input
+const $ = id => document.getElementById(id);
+let mode = 'loading', moves = 0, drag = null, hover = null, quiet = 0, touchOff = 0;
+const pointer = { x: 0, z: 0 };
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), hit = new THREE.Vector3();
+
+function planeHit(ev, y) {
+  const r = canvas.getBoundingClientRect();
+  ndc.set((ev.clientX - r.left) / r.width * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  return ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -y), hit) ? hit.clone() : null;
+}
+function cardAt(x, z) {
+  for (let i = 0; i < CARDS.length; i++) {
+    const c = CARDS[i];
+    if (Math.abs(x - c.x) < CARD_W / 2 + 0.06 && Math.abs(z - c.z) < CARD_H / 2 + 0.06) return i;
+  }
+  return -1;
+}
+const occupied = (ci, except) => ends.some(o => o !== except && o.card === ci);
+const busy = () => ends.some(e => e.state !== 'placed');
+function pickEnd(p) {
+  if (!p) return null;
+  const ci = cardAt(p.x, p.z);
+  if (ci >= 0) { const e = ends.find(o => o.card === ci && o.state === 'placed'); if (e) return e; }
+  let best = null, bd = 0.5;
+  for (const e of ends) { const d = Math.hypot(e.x - p.x, e.z - p.z); if (d < bd) { bd = d; best = e; } }
+  return best;
+}
+
+let toastTimer;
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 1700);
+}
+
+function setPointer(ev) {
+  const p = planeHit(ev, LIFT);
+  if (p) { pointer.x = p.x; pointer.z = p.z - touchOff; }
+}
+
+// a quick tap (no drag) opens the email under the finger
+let tap = null, blocked = false;
+function openMail(ci) {
+  const c = CARDS[ci], [label, bg, fg] = TAGS[c.ok ? 'ok' : c.tag];
+  $('mSubj').textContent = c.subj; $('mFrom').textContent = c.from;
+  $('mTime').innerHTML = c.time + (c.high ? ' · <span class="hi">! High importance</span>' : '');
+  $('mAv').textContent = c.av; $('mAv').style.background = c.avc;
+  $('mText').textContent = c.full;
+  $('mTag').textContent = label; $('mTag').style.background = bg; $('mTag').style.color = fg;
+  showOverlay('mail', true);
+}
+$('mail').onclick = () => showOverlay('mail', false);
+
+canvas.addEventListener('pointerdown', ev => {
+  if (mode !== 'play' || busy() || drag) return;
+  const p0 = planeHit(ev, 0);
+  blocked = false;
+  tap = p0 && cardAt(p0.x, p0.z) >= 0 ? { ci: cardAt(p0.x, p0.z), x: ev.clientX, y: ev.clientY, t: performance.now() } : null;
+  const e = pickEnd(p0);
+  if (!e) return;
+  if (e.lock) { e.shake = 0.45; toast('Padlocked. That one stays put.'); return; }
+  if (covered(e)) { e.shake = 0.45; blocked = true; return; }
+  touchOff = ev.pointerType === 'touch' ? 0.45 : 0;
+  drag = e; e.origin = e.card; e.state = 'drag'; e.path = [[e.x, e.z]];
+  setPointer(ev);
+  canvas.setPointerCapture(ev.pointerId);
+  canvas.style.cursor = 'grabbing';
+});
+canvas.addEventListener('pointermove', ev => {
+  if (drag) { setPointer(ev); return; }
+  if (mode !== 'play') { hover = null; return; }
+  const e = pickEnd(planeHit(ev, 0));
+  hover = e;
+  canvas.style.cursor = e ? (e.lock || covered(e) ? 'not-allowed' : 'grab') : 'default';
+});
+function release(wasTap) {
+  const e = drag; if (!e) return;
+  drag = null; canvas.style.cursor = 'default';
+  if (wasTap === true) { e.card = e.origin; e.queue = [[CARDS[e.origin].ax, CARDS[e.origin].az]]; e.state = 'path'; e.wpT = 0; return; }
+  // the hand can lag a quick flick, so the drop target is where the pointer let go
+  const ci = cardAt(pointer.x, pointer.z);
+  if (ci >= 0 && (ci === e.origin || !occupied(ci, e))) {
+    e.card = ci; e.queue = [[pointer.x, pointer.z]]; e.state = 'path'; e.wpT = 0;
+    e.path.push([pointer.x, pointer.z]);
+    if (ci !== e.origin) { moves++; $('moves').textContent = moves; }
+  } else {
+    // carry it back the way it came so the chain unwinds the same way it was wound
+    e.path.push([e.x, e.z]);
+    e.card = e.origin; e.queue = e.path.slice().reverse(); e.state = 'path'; e.wpT = 0;
+    toast(ci >= 0 ? 'That email already has a hand on it.' : 'Drop it on an email.');
+  }
+}
+canvas.addEventListener('pointerup', ev => {
+  const wasTap = tap && Math.hypot(ev.clientX - tap.x, ev.clientY - tap.y) < 10 && performance.now() - tap.t < 350;
+  release(!!wasTap);
+  if (wasTap) openMail(tap.ci);
+  else if (blocked) toast('A chain is on top of that hand. Move the top one first.');
+  blocked = false;
+  tap = null;
+});
+canvas.addEventListener('pointercancel', release);
+
+function showOverlay(id, on) { $(id).classList.toggle('show', on); }
+function setHud() {
+  $('moves').textContent = moves;
+  $('par').textContent = PAR;
+}
+
+// the door's tangle, settled once; Reset puts it back
+let startSnap = null;
+async function buildStart() {
+  mode = 'loading'; showOverlay('loading', true);
+  await nextFrame();
+  startSnap = await makeStart();
+  buildEndVisuals();
+  showOverlay('loading', false);
+  resetDoor(true);
+}
+function resetDoor(force) {
+  if (mode === 'loading' && !force) return;
+  drag = null; restore(startSnap); moves = 0; setHud(); quiet = 0;
+  ends.forEach(e => { e.ang = targetAngle(e); });
+  showOverlay('win', false); mode = 'play';
+}
+function win() {
+  mode = 'won';
+  $('winText').textContent = `Approved in ${moves} move${moves === 1 ? '' : 's'}.`;
+  const par = PAR;
+  $('winSub').textContent = (moves <= par ? 'Fewest possible. ' : `Fewest possible: ${par}. `) + 'The chain of command is untangled. Happy Halloween!';
+  showOverlay('win', true);
+}
+$('btnReset').onclick = () => resetDoor();
+$('winReset').onclick = () => resetDoor();
+addEventListener('keydown', ev => {
+  if (ev.key === 'r' || ev.key === 'R') resetDoor();
+});
+
+// ============================================================ layout + loop
+function fit() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  const top = $('hudTop').getBoundingClientRect().bottom + 4;
+  const bot = h - $('hudBottom').getBoundingClientRect().top + 4;
+  const avail = Math.max(120, h - top - bot);
+  const tanH = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  const fitW = w < 520 ? DOOR_W - 0.55 : DOOR_W + 0.35, fitD = w < 520 ? DOOR_D - 0.2 : DOOR_D + 0.35;
+  const dist = Math.max(fitD / (2 * tanH) * (h / avail), fitW / (2 * tanH * camera.aspect));
+  const visH = 2 * dist * tanH;
+  const cz = DOOR_CZ - (top - bot) / 2 * (visH / h);
+  camera.position.set(0, dist, cz); camera.lookAt(0, 0, cz);
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', fit);
+
+let acc = 0, lastT = performance.now(), flickT = 0, nextFlick = 2.5, clock = 0;
+function updateVisuals(dt) {
+  chains.forEach((c, i) => updateChainMesh(c, chainMeshes[i]));
+  ends.forEach((e, i) => {
+    const g = endGroups[i]; if (!g) return;
+    let d = targetAngle(e) - e.ang; d = Math.atan2(Math.sin(d), Math.cos(d));
+    e.ang += d * Math.min(1, dt * 10);
+    let wob = 0;
+    if (e.shake > 0) { e.shake -= dt; wob = Math.sin(e.shake * 60) * 0.18 * (e.shake / 0.45); }
+    g.position.set(e.x, e.y - R, e.z);
+    g.rotation.set(0, e.ang + wob, 0);
+    if (g.userData.boneMat) {
+      const on = (hover === e && !drag && mode === 'play') || drag === e;
+      g.userData.boneMat.emissive.setHex(on ? 0x5fd86f : 0x2b3a22);
+      g.userData.boneMat.emissiveIntensity = on ? 0.55 : 0.6;
+    }
+  });
+  // highlight the email under a carried hand
+  glowMesh.visible = false;
+  if (drag) {
+    const ci = cardAt(drag.x, drag.z);
+    if (ci >= 0 && (ci === drag.origin || !occupied(ci, drag))) {
+      glowMesh.visible = true; glowMesh.position.x = CARDS[ci].x; glowMesh.position.z = CARDS[ci].z;
+      glowMesh.material.color.setHex(CARDS[ci].ok ? 0x3fb950 : 0xe3a13b);
+      glowMesh.material.opacity = 0.75 + 0.25 * Math.sin(clock * 8);
+    }
+  }
+  // fluorescent tube: steady hum, occasional stutter
+  nextFlick -= dt;
+  if (nextFlick < 0) { flickT = 0.25 + Math.random() * 0.45; nextFlick = 3 + Math.random() * 8; }
+  let k = 0.97 + 0.03 * Math.sin(clock * 113);
+  if (flickT > 0) { flickT -= dt; k *= Math.random() < 0.45 ? 0.18 : 1; }
+  tube.intensity = 2.3 * k;
+  pumpkin.intensity = 0.8 + 0.25 * Math.sin(clock * 3.1) * Math.sin(clock * 1.7);
+}
+
+function loop(now) {
+  requestAnimationFrame(loop);
+  const dt = Math.min(0.05, (now - lastT) / 1000); lastT = now; clock += dt;
+  if (mode !== 'loading') {
+    acc += dt; let n = 0;
+    while (acc >= 1 / 60 && n < 3) { frame(); acc -= 1 / 60; n++; }
+    if (n === 3) acc = 0;
+    if (drag) {
+      const lp = drag.path[drag.path.length - 1];
+      if (Math.hypot(drag.x - lp[0], drag.z - lp[1]) > 0.12) drag.path.push([drag.x, drag.z]);
+    }
+    if (mode === 'play' && !drag && !busy()) {
+      quiet += dt;
+      if (quiet > 0.8 && Math.floor(clock * 60) % 6 === 0 && isSolved()) win();
+    } else quiet = 0;
+  }
+  if (chains.length) updateVisuals(dt);
+  renderer.render(scene, camera);
+}
+
+// ============================================================ boot
+(async () => {
+  try { await Promise.race([Promise.all([document.fonts.load('100px Creepster'), document.fonts.load('800 60px Inter'), document.fonts.load('600 30px Inter')]), new Promise(r => setTimeout(r, 2500))]); } catch (e) {}
+  buildBoard();
+  fit();
+  requestAnimationFrame(loop);
+  await buildStart();
+})();
+
+window.__game = { set fastSim(v) { fastSim = v; }, async trial(seq) {
+    const prev = mode; mode = 'loading'; restore(startSnap);
+    for (const [from, to, via] of seq) {
+      const e = ends.find(o => o.card === CARD_IDX[from]);
+      const wps = (via || []).map(p => typeof p === 'string' ? [CARDS[CARD_IDX[p]].ax, CARDS[CARD_IDX[p]].az] : p);
+      wps.push([CARDS[CARD_IDX[to]].ax, CARDS[CARD_IDX[to]].az]);
+      await runScripted(e, wps, CARD_IDX[to]);
+    }
+    for (let i = 0; i < 60; i++) frame();
+    const res = { solved: isSolved(), ends: ends.map(e => CARDS[e.card].id) };
+    mode = prev; return res;
+  }, toScreen(x, y, z) { const v = new THREE.Vector3(x, y, z).project(camera); return [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight]; }, get moves() { return moves; }, get ends() { return ends; }, get chains() { return chains; }, isSolved, covered, CARDS, frame, resetDoor, SOLUTION, tangleMove, get startSnap() { return startSnap; }, restore, get mode() { return mode; } };
+</script>
+</body>
+</html>
